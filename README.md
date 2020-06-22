@@ -24,12 +24,23 @@ SUBCOMMANDS:
   See 'bclm help <subcommand>' for detailed help.
 ```
 
-Note that in order to write values, the program must be run as root. This is not required for reading values.
-
 When writing values, macOS charges slightly beyond the set value (~3%). In order to display 80% when fully charged, it is recommended to set the BCLM value to 77%.
 
 ```
-$ sudo swift run bclm write 77
-$ swift run bclm read
+$ sudo bclm write 77
+$ bclm read
 77
 ```
+
+Note that in order to write values, the program must be run as root. This is not required for reading values.
+
+## Persistence
+
+The SMC can be reset by a startup shortcut or various other technical reasons. To ensure that the BCLM is always at its intended value, it should be run at startup via `launchd` as root.
+
+```
+$ sudo cp com.zackelia.bclm.plist /Library/LaunchDaemons
+$ sudo launchctl load /Library/LaunchDaemons/com.zackelia.bclm.plist
+```
+
+Note that the provided plist sets the BCLM to 80%. This can be changed in the `ProgramArguments` key.
