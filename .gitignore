@@ -4,3 +4,7 @@
 /*.xcodeproj
 xcuserdata/
 Package.resolved
+
+# Release files
+config.json
+bclm.zip
