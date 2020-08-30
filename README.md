@@ -6,7 +6,9 @@ The purpose of limiting the battery's max charge is to prolong battery health an
 
 ## Installation
 
-BCLM is written in Swift and is trivial to compile. A release zip is also provided with a signed and notarized binary for those who do not have development tools and Xcode.
+BCLM is written in Swift and is trivial to compile. Currently, it can only be compiled on macOS Catalina (10.15) or higher but it can run on OS X Mavericks (10.9) or higher.
+
+A release zip is also provided with a signed and notarized binary for those who do not have development tools or are on an older macOS version.
 
 ### From Source
 
