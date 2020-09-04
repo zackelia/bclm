@@ -5,7 +5,7 @@ struct BCLM: ParsableCommand {
     static let configuration = CommandConfiguration(
             abstract: "Battery Charge Level Max (BCLM) Utility.",
             version: "0.0.1",
-            subcommands: [Read.self, Write.self])
+            subcommands: [Read.self, Write.self, Persist.self, Unpersist.self])
 
     struct Read: ParsableCommand {
         static let configuration = CommandConfiguration(
@@ -67,6 +67,54 @@ struct BCLM: ParsableCommand {
             } catch {
                 print(error)
             }
+
+            if (isPersistent()) {
+                updatePlist(value)
+            }
+        }
+    }
+
+    struct Persist: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Persists bclm on reboot.")
+
+        func validate() throws {
+            guard getuid() == 0 else {
+                throw ValidationError("Must run as root.")
+            }
+        }
+
+        func run() {
+            do {
+                try SMCKit.open()
+            } catch {
+                print(error)
+            }
+
+            let key = SMCKit.getKey("BCLM", type: DataTypes.UInt8)
+            do {
+                let status = try SMCKit.readData(key).0
+                updatePlist(Int(status))
+            } catch {
+                print(error)
+            }
+
+            persist(true)
+        }
+    }
+
+    struct Unpersist: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Unpersists bclm on reboot.")
+
+        func validate() throws {
+            guard getuid() == 0 else {
+                throw ValidationError("Must run as root.")
+            }
+        }
+
+        func run() {
+            persist(false)
         }
     }
 }
