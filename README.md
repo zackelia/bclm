@@ -40,6 +40,8 @@ OPTIONS:
 SUBCOMMANDS:
   read                    Reads the BCLM value.
   write                   Writes a BCLM value.
+  persist                 Persists bclm.
+  unpersist               Unpersists bclm.
 
   See 'bclm help <subcommand>' for detailed help.
 ```
@@ -56,11 +58,16 @@ Note that in order to write values, the program must be run as root. This is not
 
 ## Persistence
 
-The SMC can be reset by a startup shortcut or various other technical reasons. To ensure that the BCLM is always at its intended value, it should be run at startup via `launchd` as root.
+The SMC can be reset by a startup shortcut or various other technical reasons. To ensure that the BCLM is always at its intended value, it should be persisted.
+
+This will create a new plist in `/Library/LaunchDaemons` and load it via `launchctl`. It will persist with the current BCLM value and will update on subsequent BCLM writes.
 
 ```
-$ sudo cp com.zackelia.bclm.plist /Library/LaunchDaemons
-$ sudo launchctl load /Library/LaunchDaemons/com.zackelia.bclm.plist
+$ sudo bclm persist
 ```
 
-Note that the provided plist sets the BCLM to 80%. This can be changed in the `ProgramArguments` key.
+ Likewise, it can be unpersisted which will unload the plist.
+
+```
+$ sudo bclm unpersist
+```
