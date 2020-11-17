@@ -52,9 +52,10 @@ struct BCLM: ParsableCommand {
                 print(error)
             }
 
-            let key = SMCKit.getKey("BCLM", type: DataTypes.UInt8)
+            let bclm_key = SMCKit.getKey("BCLM", type: DataTypes.UInt8)
+            let bfcl_key = SMCKit.getKey("BFCL", type: DataTypes.UInt8)
 
-            let bytes: SMCBytes = (
+            let bclm_bytes: SMCBytes = (
                 UInt8(value), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
                 UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
                 UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
@@ -62,8 +63,17 @@ struct BCLM: ParsableCommand {
                 UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
             )
 
+            let bfcl_bytes: SMCBytes = (
+                UInt8(value - 5), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+
             do {
-                try SMCKit.writeData(key, data: bytes)
+                try SMCKit.writeData(bclm_key, data: bclm_bytes)
+                try SMCKit.writeData(bfcl_key, data: bfcl_bytes)
             } catch {
                 print(error)
             }
