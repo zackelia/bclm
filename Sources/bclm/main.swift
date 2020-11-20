@@ -73,7 +73,16 @@ struct BCLM: ParsableCommand {
 
             do {
                 try SMCKit.writeData(bclm_key, data: bclm_bytes)
+            } catch {
+                print(error)
+            }
+
+            // USB-C Macs do not have the BFCL key since they don't have the
+            // charging indicator
+            do {
                 try SMCKit.writeData(bfcl_key, data: bfcl_bytes)
+            } catch SMCKit.SMCError.keyNotFound {
+                // Do nothing
             } catch {
                 print(error)
             }
