@@ -34,6 +34,8 @@ $ unzip bclm.zip
 $ cp bclm /usr/local/bin
 ```
 
+Note: For older versions of macOS, it may be necessary to install the [Swift 5 Runtime Support for Command Line Tools](https://support.apple.com/kb/dl1998?locale=en_US) if you get the following error: `dyld: Symbol not found`
+
 ## Usage
 
 ```
