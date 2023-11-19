@@ -74,6 +74,11 @@ final class bclmTests: XCTestCase {
 
         output = writeBCLM(value: 0)!
         XCTAssertNotEqual(output, "")
+
+#if arch(arm64)
+        output = writeBCLM(value: 79)!
+        XCTAssertNotEqual(output, "")
+#endif
     }
 
     /// Returns path to the built products directory.
