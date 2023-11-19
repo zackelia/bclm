@@ -22,4 +22,4 @@ jobs:
     - uses: actions/upload-artifact@v3
       with:
         name: bclm
-        path: .build/release/bclm
+        path: .build/apple/Products/Release/bclm
