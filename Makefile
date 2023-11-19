@@ -12,10 +12,10 @@ uninstall:
 	rm -rf "$(bindir)/bclm"
 
 test:
-	swift test
+	swift build -c debug --build-tests
+	sudo swift test --skip-build
 
 clean:
 	rm -rf .build
 
 .PHONY: build install uninstall clean
-
