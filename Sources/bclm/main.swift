@@ -10,7 +10,7 @@ import Foundation
 struct BCLM: ParsableCommand {
     static let configuration = CommandConfiguration(
             abstract: "Battery Charge Level Max (BCLM) Utility.",
-            version: "0.0.4",
+            version: "0.1.0",
             subcommands: [Read.self, Write.self, Persist.self, Unpersist.self])
 
     struct Read: ParsableCommand {
