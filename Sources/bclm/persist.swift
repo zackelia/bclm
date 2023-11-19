@@ -2,6 +2,7 @@ import Foundation
 
 let launchctl = "/bin/launchctl"
 let plist = "com.zackelia.bclm.plist"
+let plist_path = "/Library/LaunchDaemons/\(plist)"
 
 struct Preferences: Codable {
     var Label: String
@@ -10,6 +11,15 @@ struct Preferences: Codable {
 }
 
 func persist(_ enable: Bool) {
+    if isPersistent() && enable {
+        fputs("Already persisting!\n", stderr)
+        return
+    }
+    if !isPersistent() && !enable {
+        fputs("Already not persisting!\n", stderr)
+        return
+    }
+
     let process = Process()
     let pipe = Pipe()
 
@@ -21,7 +31,7 @@ func persist(_ enable: Bool) {
     }
 
     process.launchPath = launchctl
-    process.arguments = [load, "/Library/LaunchDaemons/\(plist)"]
+    process.arguments = [load, plist_path]
     process.standardOutput = pipe
     process.standardError = pipe
 
@@ -32,6 +42,14 @@ func persist(_ enable: Bool) {
 
     if (output != nil && !output!.isEmpty) {
         print(output!)
+    }
+
+    if !enable {
+        do {
+            try FileManager.default.removeItem(at: URL(fileURLWithPath: plist_path))
+        } catch {
+            print(error)
+        }
     }
 }
 
@@ -67,7 +85,7 @@ func updatePlist(_ value: Int) {
         ]
     )
 
-    let path = URL(fileURLWithPath: "/Library/LaunchDaemons/\(plist)")
+    let path = URL(fileURLWithPath: plist_path)
 
     let encoder = PropertyListEncoder()
     encoder.outputFormat = .xml
