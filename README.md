@@ -1,6 +1,6 @@
 # BCLM
 
-BCLM is a wrapper to read and write battery charge level max (BCLM) values to the System Management Controller (SMC) on Mac computers. This project was inspired by several battery management solutions, including Apple's own battery health management.
+BCLM is a wrapper to read and write battery charge level max (BCLM)/CHWA values to the System Management Controller (SMC) on Mac computers. It supports both Intel and Apple silicon. This project was inspired by several battery management solutions, including Apple's own battery health management.
 
 The purpose of limiting the battery's max charge is to prolong battery health and to prevent damage to the battery. Various sources show that the optimal charge range for operation of lithium-ion batteries is between 40% and 80%, commonly referred to as the 40-80 rule [[1]](https://www.apple.com/batteries/why-lithium-ion/)[[2]](https://www.eeworldonline.com/why-you-should-stop-fully-charging-your-smartphone-now/)[[3]](https://www.csmonitor.com/Technology/Tech/2014/0103/40-80-rule-New-tip-for-extending-battery-life). This project is especially helpful to people who leave their Macs on the charger all day, every day.
 
@@ -22,16 +22,16 @@ $ brew install bclm
 ### From Source
 
 ```
-$ swift build
-$ sudo swift test
-$ cp .build/debug/bclm /usr/local/bin
+$ make build
+$ make test
+$ sudo make install
 ```
 
 ### From Releases
 
 ```
 $ unzip bclm.zip
-$ cp bclm /usr/local/bin
+$ sudo cp bclm /usr/local/bin
 ```
 
 Note: For older versions of macOS, it may be necessary to install the [Swift 5 Runtime Support for Command Line Tools](https://support.apple.com/kb/dl1998?locale=en_US) if you get the following error: `dyld: Symbol not found`
@@ -57,13 +57,15 @@ SUBCOMMANDS:
   See 'bclm help <subcommand>' for detailed help.
 ```
 
-When writing values, macOS charges slightly beyond the set value (~3%). In order to display 80% when fully charged, it is recommended to set the BCLM value to 77%. When charging while system is shut down or sleeping, the charging can go beyond set value more than average 3%.
+For Intel machines, when writing values, macOS charges slightly beyond the set value (~3%). In order to display 80% when fully charged, it is recommended to set the BCLM value to 77%. When charging while system is shut down or sleeping, the charging can go beyond set value more than average 3%.
 
 ```
 $ sudo bclm write 77
 $ bclm read
 77
 ```
+
+For Apple silicon machines, only the values 80 and 100 are supported and firmware >= 13.0 is required.
 
 Note that in order to write values, the program must be run as root. This is not required for reading values.
 
@@ -77,7 +79,7 @@ This will create a new plist in `/Library/LaunchDaemons` and load it via `launch
 $ sudo bclm persist
 ```
 
- Likewise, it can be unpersisted which will unload the plist.
+Likewise, it can be unpersisted which will unload the service and remove the plist.
 
 ```
 $ sudo bclm unpersist
