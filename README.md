@@ -31,6 +31,7 @@ $ sudo make install
 
 ```
 $ unzip bclm.zip
+$ sudo mkdir -p /usr/local/bin
 $ sudo cp bclm /usr/local/bin
 ```
 
