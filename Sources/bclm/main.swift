@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import IOKit.ps
 
 #if arch(x86_64)
     let BCLM_KEY = "BCLM"
@@ -11,7 +12,7 @@ struct BCLM: ParsableCommand {
     static let configuration = CommandConfiguration(
             abstract: "Battery Charge Level Max (BCLM) Utility.",
             version: "0.1.0",
-            subcommands: [Read.self, Write.self, Persist.self, Unpersist.self])
+            subcommands: [Read.self, Write.self, Loop.self, Persist.self, Unpersist.self])
 
     struct Read: ParsableCommand {
         static let configuration = CommandConfiguration(
@@ -126,6 +127,83 @@ struct BCLM: ParsableCommand {
 #endif
             if (isPersistent()) {
                 updatePlist(value)
+            }
+        }
+    }
+
+    struct Loop: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Loop bclm on battery level 80%.")
+        
+        func validate() throws {
+            guard getuid() == 0 else {
+                throw ValidationError("Must run as root.")
+            }
+
+#if arch(x86_64)
+            throw ValidationError("Only support Apple Silicon.")
+#endif
+        }
+        
+        func run() {
+            do {
+                try SMCKit.open()
+            } catch {
+                print(error)
+            }
+
+            var lastStatus = "Unknown"
+            let aclc_key = SMCKit.getKey("ACLC", type: DataTypes.UInt8)
+            let aclc_bytes_full: SMCBytes = (
+                UInt8(3), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+            let aclc_bytes_charging: SMCBytes = (
+                UInt8(4), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+            let aclc_bytes_unknown: SMCBytes = (
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+
+            while true {
+                let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+                let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
+                let chargeState = sources[0]["Power Source State"] as? String
+                let isCharging = (chargeState == "AC Power") ? true : false
+                let currentBattLevel = sources[0]["Current Capacity"] as? Int
+                let currentBattLevelInt = Int(currentBattLevel ?? -1)
+                
+                do {
+                    if (isCharging && currentBattLevelInt != -1) {
+                        if (currentBattLevelInt == 80 || currentBattLevelInt == 100) {
+                            if (lastStatus != "Full") {
+                                lastStatus = "Full" // Maybe.
+                                try SMCKit.writeData(aclc_key, data: aclc_bytes_full)
+                            }
+                        } else if (lastStatus != "Charging") {
+                            lastStatus = "Charging"
+                            try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
+                        }
+                    } else if (lastStatus != "Unknown") {
+                        lastStatus = "Unknown"
+                        try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
+                    }
+                } catch {
+                    print(error)
+                }
+
+                sleep(1)
             }
         }
     }
