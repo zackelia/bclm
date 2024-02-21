@@ -12,7 +12,7 @@ struct BCLM: ParsableCommand {
     static let configuration = CommandConfiguration(
             abstract: "Battery Charge Level Max (BCLM) Utility.",
             version: "0.1.0",
-            subcommands: [Read.self, Write.self, Loop.self, Persist.self, Unpersist.self])
+            subcommands: [Read.self, Write.self, Loop.self, Persist.self, PersistLoop.self, Unpersist.self])
 
     struct Read: ParsableCommand {
         static let configuration = CommandConfiguration(
@@ -125,8 +125,8 @@ struct BCLM: ParsableCommand {
                 print(error)
             }
 #endif
-            if (isPersistent()) {
-                updatePlist(value)
+            if (isPersistent(false)) {
+                updatePlist(value, false)
             }
         }
     }
@@ -146,12 +146,6 @@ struct BCLM: ParsableCommand {
         }
         
         func run() {
-            do {
-                try SMCKit.open()
-            } catch {
-                print(error)
-            }
-
             var lastStatus = "Unknown"
             let aclc_key = SMCKit.getKey("ACLC", type: DataTypes.UInt8)
             let aclc_bytes_full: SMCBytes = (
@@ -186,17 +180,20 @@ struct BCLM: ParsableCommand {
                 
                 do {
                     if (isCharging && currentBattLevelInt != -1) {
-                        if (currentBattLevelInt == 80 || currentBattLevelInt == 100) {
+                        if (currentBattLevelInt >= 80) {
                             if (lastStatus != "Full") {
                                 lastStatus = "Full" // Maybe.
+                                try SMCKit.open()
                                 try SMCKit.writeData(aclc_key, data: aclc_bytes_full)
                             }
                         } else if (lastStatus != "Charging") {
                             lastStatus = "Charging"
+                            try SMCKit.open()
                             try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
                         }
                     } else if (lastStatus != "Unknown") {
                         lastStatus = "Unknown"
+                        try SMCKit.open()
                         try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
                     }
                 } catch {
@@ -229,15 +226,35 @@ struct BCLM: ParsableCommand {
             do {
                 let status = try SMCKit.readData(key).0
 #if arch(x86_64)
-                updatePlist(Int(status))
+                updatePlist(Int(status), false)
 #else
-                updatePlist(Int(status) == 1 ? 80 : 100)
+                updatePlist(Int(status) == 1 ? 80 : 100, false)
 #endif
             } catch {
                 print(error)
             }
 
-            persist(true)
+            persist(true, false)
+        }
+    }
+    
+    struct PersistLoop: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Persists bclm loop service on reboot.")
+
+        func validate() throws {
+            guard getuid() == 0 else {
+                throw ValidationError("Must run as root.")
+            }
+
+#if arch(x86_64)
+            throw ValidationError("Only support Apple Silicon.")
+#endif
+        }
+
+        func run() {
+            updatePlist(0, true)
+            persist(true, true)
         }
     }
 
@@ -252,7 +269,10 @@ struct BCLM: ParsableCommand {
         }
 
         func run() {
-            persist(false)
+#if !arch(x86_64)
+            persist(false, true)
+#endif
+            persist(false, false)
         }
     }
 }
