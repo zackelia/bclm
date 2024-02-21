@@ -12,7 +12,7 @@ struct BCLM: ParsableCommand {
     static let configuration = CommandConfiguration(
             abstract: "Battery Charge Level Max (BCLM) Utility.",
             version: "0.1.0",
-            subcommands: [Read.self, Write.self, Loop.self, Persist.self, PersistLoop.self, Unpersist.self])
+            subcommands: [Read.self, Write.self, Loop.self, Persist.self, PersistLoop.self, Unpersist.self, UnpersistLoop.self])
 
     struct Read: ParsableCommand {
         static let configuration = CommandConfiguration(
@@ -146,7 +146,22 @@ struct BCLM: ParsableCommand {
         }
         
         func run() {
+            let bclm_key = SMCKit.getKey("CHWA", type: DataTypes.UInt8)
             let aclc_key = SMCKit.getKey("ACLC", type: DataTypes.UInt8)
+            let bclm_bytes_unlimit: SMCBytes = (
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+            let bclm_bytes_limit: SMCBytes = (
+                UInt8(1), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
             let aclc_bytes_full: SMCBytes = (
                 UInt8(3), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
                 UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
@@ -180,8 +195,15 @@ struct BCLM: ParsableCommand {
                 do {
                     try SMCKit.open()
                     if (isCharging && currentBattLevelInt != -1) {
-                        try SMCKit.writeData(aclc_key, data: (currentBattLevelInt >= 80 ? aclc_bytes_full : aclc_bytes_charging))
+                        if (currentBattLevelInt >= 80) {
+                            try SMCKit.writeData(bclm_key, data: bclm_bytes_limit)
+                            try SMCKit.writeData(aclc_key, data: aclc_bytes_full)
+                        } else {
+                            try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
+                            try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
+                        }
                     } else {
+                        try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
                         try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
                     }
                 } catch {
@@ -257,10 +279,25 @@ struct BCLM: ParsableCommand {
         }
 
         func run() {
-#if !arch(x86_64)
-            persist(false, true)
-#endif
             persist(false, false)
+        }
+    }
+    struct UnpersistLoop: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Unpersists bclm on reboot.")
+
+        func validate() throws {
+            guard getuid() == 0 else {
+                throw ValidationError("Must run as root.")
+            }
+
+#if arch(x86_64)
+            throw ValidationError("Only support Apple Silicon.")
+#endif
+        }
+
+        func run() {
+            persist(false, true)
         }
     }
 }
