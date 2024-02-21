@@ -206,6 +206,7 @@ struct BCLM: ParsableCommand {
                         try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
                         try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
                     }
+                    SMCKit.close()
                 } catch {
                     print(error)
                 }
