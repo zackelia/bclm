@@ -146,7 +146,6 @@ struct BCLM: ParsableCommand {
         }
         
         func run() {
-            var lastStatus = "Unknown"
             let aclc_key = SMCKit.getKey("ACLC", type: DataTypes.UInt8)
             let aclc_bytes_full: SMCBytes = (
                 UInt8(3), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
@@ -179,28 +178,17 @@ struct BCLM: ParsableCommand {
                 let currentBattLevelInt = Int(currentBattLevel ?? -1)
                 
                 do {
+                    try SMCKit.open()
                     if (isCharging && currentBattLevelInt != -1) {
-                        if (currentBattLevelInt >= 80) {
-                            if (lastStatus != "Full") {
-                                lastStatus = "Full" // Maybe.
-                                try SMCKit.open()
-                                try SMCKit.writeData(aclc_key, data: aclc_bytes_full)
-                            }
-                        } else if (lastStatus != "Charging") {
-                            lastStatus = "Charging"
-                            try SMCKit.open()
-                            try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
-                        }
-                    } else if (lastStatus != "Unknown") {
-                        lastStatus = "Unknown"
-                        try SMCKit.open()
+                        try SMCKit.writeData(aclc_key, data: (currentBattLevelInt >= 80 ? aclc_bytes_full : aclc_bytes_charging))
+                    } else {
                         try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
                     }
                 } catch {
                     print(error)
                 }
 
-                sleep(1)
+                sleep(2)
             }
         }
     }
