@@ -192,23 +192,23 @@ struct BCLM: ParsableCommand {
                 let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
                 let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
                 let chargeState = sources[0]["Power Source State"] as? String
-                let isCharging = (chargeState == "AC Power") ? true : false
+                let isACPower = (chargeState == "AC Power") ? true : false
+                let isCharging = sources[0]["Is Charging"] as? Bool
                 let currentBattLevel = sources[0]["Current Capacity"] as? Int
                 let currentBattLevelInt = Int(currentBattLevel ?? -1)
                 
                 do {
                     try SMCKit.open()
-                    if (isCharging && currentBattLevelInt != -1) {
+                    if (isACPower && currentBattLevelInt >= 0) {
                         if (currentBattLevelInt >= 80) {
                             try SMCKit.writeData(bclm_key, data: bclm_bytes_limit)
-                            try SMCKit.writeData(aclc_key, data: aclc_bytes_full)
+                            
                             if (pmStatus != nil && IOPMAssertionRelease(assertionID) == kIOReturnSuccess) {
                                 pmStatus = nil
                                 assertionID = IOPMAssertionID(0)
                             }
                         } else {
                             try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
-                            try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
                             if (pmStatus == nil) {
                                 pmStatus = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventSystemSleep as CFString, UInt32(kIOPMAssertionLevelOn), reasonForActivity as CFString, &assertionID)
                                 if (pmStatus != kIOReturnSuccess) {
@@ -220,11 +220,17 @@ struct BCLM: ParsableCommand {
                         }
                     } else {
                         try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
-                        try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
                         if (pmStatus != nil && IOPMAssertionRelease(assertionID) == kIOReturnSuccess) {
                             pmStatus = nil
                             assertionID = IOPMAssertionID(0)
                         }
+                    }
+                    if (isCharging == false) {
+                        try SMCKit.writeData(aclc_key, data: aclc_bytes_full)
+                    } else if (isCharging == true) {
+                        try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
+                    } else {
+                        try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
                     }
                     SMCKit.close()
                 } catch {
