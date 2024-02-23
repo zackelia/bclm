@@ -210,7 +210,7 @@ struct BCLM: ParsableCommand {
                             try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
                             try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
                             if (pmStatus == nil) {
-                                pmStatus = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep as CFString, UInt32(kIOPMAssertionLevelOn), reasonForActivity as CFString, &assertionID)
+                                pmStatus = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventSystemSleep as CFString, UInt32(kIOPMAssertionLevelOn), reasonForActivity as CFString, &assertionID)
                                 if (pmStatus != kIOReturnSuccess) {
                                     pmStatus = nil
                                     assertionID = IOPMAssertionID(0)
