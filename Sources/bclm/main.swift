@@ -211,7 +211,7 @@ struct BCLM: ParsableCommand {
                                     pmStatus = nil
                                     assertionID = IOPMAssertionID(0)
                                 }
-                            } else {
+                            } else if (currentBattLevelInt < 78) {
                                 try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
                                 isCharging = true
 
