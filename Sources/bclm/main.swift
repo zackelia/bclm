@@ -193,7 +193,7 @@ struct BCLM: ParsableCommand {
                 let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
                 let chargeState = sources[0]["Power Source State"] as? String
                 let isACPower = (chargeState == "AC Power") ? true : false
-                var isCharging = sources[0]["Is Charging"] as? Bool
+                let isCharging = sources[0]["Is Charging"] as? Bool
                 let currentBattLevelInt = Int((sources[0]["Current Capacity"] as? Int) ?? -1)
                 
                 do {
@@ -204,7 +204,6 @@ struct BCLM: ParsableCommand {
                         if (isACPower)  {
                             if (currentBattLevelInt >= 80) {
                                 try SMCKit.writeData(bclm_key, data: bclm_bytes_limit)
-                                isCharging = false
 
                                 // The battery is "full", so sleep will no longer be prevented (If currently prevented).
                                 if (pmStatus != nil && IOPMAssertionRelease(assertionID) == kIOReturnSuccess) {
@@ -213,7 +212,6 @@ struct BCLM: ParsableCommand {
                                 }
                             } else if (currentBattLevelInt < 78) {
                                 try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
-                                isCharging = true
 
                                 // The battery is not "full", so sleep will be prevented (If not currently prevented).
                                 if (pmStatus == nil) {
