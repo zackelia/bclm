@@ -1,5 +1,7 @@
 import ArgumentParser
 import Foundation
+import IOKit.ps
+import IOKit.pwr_mgt
 
 #if arch(x86_64)
     let BCLM_KEY = "BCLM"
@@ -11,7 +13,7 @@ struct BCLM: ParsableCommand {
     static let configuration = CommandConfiguration(
             abstract: "Battery Charge Level Max (BCLM) Utility.",
             version: "0.1.0",
-            subcommands: [Read.self, Write.self, Persist.self, Unpersist.self])
+            subcommands: [Read.self, Write.self, Loop.self, Persist.self, PersistLoop.self, Unpersist.self, UnpersistLoop.self])
 
     struct Read: ParsableCommand {
         static let configuration = CommandConfiguration(
@@ -124,8 +126,130 @@ struct BCLM: ParsableCommand {
                 print(error)
             }
 #endif
-            if (isPersistent()) {
-                updatePlist(value)
+            if (isPersistent(false)) {
+                updatePlist(value, false)
+            }
+        }
+    }
+
+    struct Loop: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Loop bclm on battery level 80%.")
+        
+        func validate() throws {
+            guard getuid() == 0 else {
+                throw ValidationError("Must run as root.")
+            }
+
+#if arch(x86_64)
+            throw ValidationError("Only support Apple Silicon.")
+#endif
+        }
+        
+        func run() {
+            let bclm_key = SMCKit.getKey("CHWA", type: DataTypes.UInt8)
+            let aclc_key = SMCKit.getKey("ACLC", type: DataTypes.UInt8)
+            let bclm_bytes_unlimit: SMCBytes = (
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+            let bclm_bytes_limit: SMCBytes = (
+                UInt8(1), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+            let aclc_bytes_full: SMCBytes = (
+                UInt8(3), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+            let aclc_bytes_charging: SMCBytes = (
+                UInt8(4), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+            let aclc_bytes_unknown: SMCBytes = (
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
+                UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
+            )
+            var pmStatus : IOReturn? = nil;
+            var assertionID : IOPMAssertionID = IOPMAssertionID(0)
+            let reasonForActivity = "bclm_loop - Prevent sleep before charging limit is reached."
+
+            while true {
+                let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+                let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
+                let chargeState = sources[0]["Power Source State"] as? String
+                let isACPower = (chargeState == "AC Power") ? true : false
+                let isCharging = sources[0]["Is Charging"] as? Bool
+                let currentBattLevelInt = Int((sources[0]["Current Capacity"] as? Int) ?? -1)
+                
+                do {
+                    try SMCKit.open()
+                    
+                    // Change charging status (If current charging status is known).
+                    if (chargeState != nil && currentBattLevelInt >= 0) {
+                        if (isACPower)  {
+                            if (currentBattLevelInt >= 80) {
+                                try SMCKit.writeData(bclm_key, data: bclm_bytes_limit)
+
+                                // The battery is "full", so sleep will no longer be prevented (If currently prevented).
+                                if (pmStatus != nil && IOPMAssertionRelease(assertionID) == kIOReturnSuccess) {
+                                    pmStatus = nil
+                                    assertionID = IOPMAssertionID(0)
+                                }
+                            } else if (currentBattLevelInt < 78) {
+                                try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
+
+                                // The battery is not "full", so sleep will be prevented (If not currently prevented).
+                                if (pmStatus == nil) {
+                                    pmStatus = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventSystemSleep as CFString, UInt32(kIOPMAssertionLevelOn), reasonForActivity as CFString, &assertionID)
+                                    if (pmStatus != kIOReturnSuccess) {
+                                        pmStatus = nil
+                                        assertionID = IOPMAssertionID(0)
+                                        print("Failed to prevent sleep.")
+                                    }
+                                }
+                            }
+                        } else {
+                            try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
+
+                            // No charger connected, so sleep will no longer be prevented (If currently prevented).
+                            if (pmStatus != nil && IOPMAssertionRelease(assertionID) == kIOReturnSuccess) {
+                                pmStatus = nil
+                                assertionID = IOPMAssertionID(0)
+                            }
+                        }
+                    }
+                    
+                    // Change MagSafe LED status.
+                    if (isCharging == false) {
+                        try SMCKit.writeData(aclc_key, data: aclc_bytes_full)
+                    } else if (isCharging == true) {
+                        try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
+                    } else {
+                        try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
+                    }
+                } catch {
+                    print(error)
+                }
+
+                // Try close SMC as failure to open is very rare.
+                SMCKit.close()
+
+                sleep(2)
             }
         }
     }
@@ -151,15 +275,35 @@ struct BCLM: ParsableCommand {
             do {
                 let status = try SMCKit.readData(key).0
 #if arch(x86_64)
-                updatePlist(Int(status))
+                updatePlist(Int(status), false)
 #else
-                updatePlist(Int(status) == 1 ? 80 : 100)
+                updatePlist(Int(status) == 1 ? 80 : 100, false)
 #endif
             } catch {
                 print(error)
             }
 
-            persist(true)
+            persist(true, false)
+        }
+    }
+    
+    struct PersistLoop: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Persists bclm loop service on reboot.")
+
+        func validate() throws {
+            guard getuid() == 0 else {
+                throw ValidationError("Must run as root.")
+            }
+
+#if arch(x86_64)
+            throw ValidationError("Only support Apple Silicon.")
+#endif
+        }
+
+        func run() {
+            updatePlist(0, true)
+            persist(true, true)
         }
     }
 
@@ -174,7 +318,25 @@ struct BCLM: ParsableCommand {
         }
 
         func run() {
-            persist(false)
+            persist(false, false)
+        }
+    }
+    struct UnpersistLoop: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Unpersists bclm on reboot.")
+
+        func validate() throws {
+            guard getuid() == 0 else {
+                throw ValidationError("Must run as root.")
+            }
+
+#if arch(x86_64)
+            throw ValidationError("Only support Apple Silicon.")
+#endif
+        }
+
+        func run() {
+            persist(false, true)
         }
     }
 }
