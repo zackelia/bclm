@@ -184,9 +184,14 @@ struct BCLM: ParsableCommand {
                 UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0),
                 UInt8(0), UInt8(0), UInt8(0), UInt8(0), UInt8(0)
             )
-            var pmStatus : IOReturn? = nil;
+            var pmStatus : IOReturn? = nil
             var assertionID : IOPMAssertionID = IOPMAssertionID(0)
             let reasonForActivity = "bclm_loop - Prevent sleep before charging limit is reached."
+            let maxTryCount = 3
+            var lastLimit : Bool? = nil
+            var lastLimitCheckCount = 0
+            var lastCharging : Bool? = nil
+            var lastChargingCheckCount = 0
 
             while true {
                 let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
@@ -196,58 +201,100 @@ struct BCLM: ParsableCommand {
                 let isCharging = sources[0]["Is Charging"] as? Bool
                 let currentBattLevelInt = Int((sources[0]["Current Capacity"] as? Int) ?? -1)
                 
-                do {
-                    try SMCKit.open()
+                // Avoid failure by repeating maxTryCount times, and avoid opening SMC each time to affect performance.
+                var needLimit : Bool? = nil
+                if (chargeState != nil && currentBattLevelInt >= 0) {
+                    if (!isACPower || currentBattLevelInt >= 80) {
+                        needLimit = true
+                    } else if (currentBattLevelInt < 78) {
+                        needLimit = false
+                    }
+                }
+                if (lastLimit != needLimit) {
+                    var needLimitStr = "nil"
+                    if (needLimit != nil) {
+                        needLimitStr = String(needLimit!)
+                    }
+                    var lastLimitStr = "nil"
+                    if (lastLimit != nil) {
+                        lastLimitStr = String(lastLimit!)
+                    }
+                    print("Limit status will be changed. (Current: \(needLimitStr), Last: \(lastLimitStr))")
+
+                    lastLimit = needLimit
+                    lastLimitCheckCount = 1
+                } else if (needLimit != nil) {
+                    lastLimitCheckCount += 1
+                }
+
+                if (lastCharging != isCharging) {
+                    var isChargingStr = "nil"
+                    if (isCharging != nil) {
+                        isChargingStr = String(isCharging!)
+                    }
+                    var lastChargingStr = "nil"
+                    if (lastCharging != nil) {
+                        lastChargingStr = String(lastCharging!)
+                    }
+                    print("Charging status has changed! (Current: \(isChargingStr), Last: \(lastChargingStr))")
                     
-                    // Change charging status (If current charging status is known).
-                    if (chargeState != nil && currentBattLevelInt >= 0) {
-                        if (isACPower)  {
-                            if (currentBattLevelInt >= 80) {
-                                try SMCKit.writeData(bclm_key, data: bclm_bytes_limit)
+                    lastCharging = isCharging
+                    lastChargingCheckCount = 1
 
-                                // The battery is "full", so sleep will no longer be prevented (If currently prevented).
-                                if (pmStatus != nil && IOPMAssertionRelease(assertionID) == kIOReturnSuccess) {
-                                    pmStatus = nil
-                                    assertionID = IOPMAssertionID(0)
-                                }
-                            } else if (currentBattLevelInt < 78) {
-                                try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
+                } else if (isCharging != nil) {
+                    lastChargingCheckCount += 1
+                }
 
-                                // The battery is not "full", so sleep will be prevented (If not currently prevented).
-                                if (pmStatus == nil) {
-                                    pmStatus = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventSystemSleep as CFString, UInt32(kIOPMAssertionLevelOn), reasonForActivity as CFString, &assertionID)
-                                    if (pmStatus != kIOReturnSuccess) {
-                                        pmStatus = nil
-                                        assertionID = IOPMAssertionID(0)
-                                        print("Failed to prevent sleep.")
-                                    }
-                                }
-                            }
-                        } else {
-                            try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
-
-                            // No charger connected, so sleep will no longer be prevented (If currently prevented).
+                // If each function has been repeated maxTryCount times, skip check.
+                if (lastLimitCheckCount <= maxTryCount || lastChargingCheckCount <= maxTryCount) {
+                    do {
+                        try SMCKit.open()
+                        print("SMC has opened!")
+                        
+                        // Change charging status (If current charging status is known).
+                        if (needLimit == true)  {
+                            try SMCKit.writeData(bclm_key, data: bclm_bytes_limit)
+                            print("Limit status has changed! (Limit)")
+                            
+                            // A: The battery is "full", sleep will no longer be prevented (If currently prevented).
+                            // B: No charger connected, sleep will no longer be prevented (If currently prevented), but charging is limited by default to prevent charging to 100% when disconnected from charger and sleeping.
                             if (pmStatus != nil && IOPMAssertionRelease(assertionID) == kIOReturnSuccess) {
                                 pmStatus = nil
                                 assertionID = IOPMAssertionID(0)
                             }
+                        } else if (needLimit == false) {
+                            try SMCKit.writeData(bclm_key, data: bclm_bytes_unlimit)
+                            print("Limit status has changed! (Unlimit)")
+                            
+                            // The battery is not "full", sleep will be prevented (If not currently prevented).
+                            if (pmStatus == nil) {
+                                pmStatus = IOPMAssertionCreateWithName(kIOPMAssertionTypePreventSystemSleep as CFString, UInt32(kIOPMAssertionLevelOn), reasonForActivity as CFString, &assertionID)
+                                if (pmStatus != kIOReturnSuccess) {
+                                    pmStatus = nil
+                                    assertionID = IOPMAssertionID(0)
+                                    print("Failed to prevent sleep.")
+                                }
+                            }
                         }
+                        
+                        // Change MagSafe LED status.
+                        if (isCharging == false) {
+                            try SMCKit.writeData(aclc_key, data: aclc_bytes_full)
+                            print("MagSafe LED status has changed! (Full)")
+                        } else if (isCharging == true) {
+                            try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
+                            print("MagSafe LED status has changed! (Charging)")
+                        } else {
+                            try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
+                            print("MagSafe LED status has changed! (Unknown)")
+                        }
+                        
+                        SMCKit.close()
+                        print("SMC has closed!")
+                    } catch {
+                        print(error)
                     }
-                    
-                    // Change MagSafe LED status.
-                    if (isCharging == false) {
-                        try SMCKit.writeData(aclc_key, data: aclc_bytes_full)
-                    } else if (isCharging == true) {
-                        try SMCKit.writeData(aclc_key, data: aclc_bytes_charging)
-                    } else {
-                        try SMCKit.writeData(aclc_key, data: aclc_bytes_unknown)
-                    }
-                } catch {
-                    print(error)
                 }
-
-                // Try close SMC as failure to open is very rare.
-                SMCKit.close()
 
                 sleep(2)
             }
