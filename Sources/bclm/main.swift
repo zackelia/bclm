@@ -188,8 +188,9 @@ struct BCLM: ParsableCommand {
             var assertionID : IOPMAssertionID = IOPMAssertionID(0)
             let reasonForActivity = "bclm_loop - Prevent sleep before charging limit is reached."
             let maxTryCount = 3
-            var lastLimit : Bool? = nil
+            var lastLimit = false
             var lastLimitCheckCount = 0
+            var lastACPower : Bool? = nil
             var lastCharging : Bool? = nil
             var lastChargingCheckCount = 0
 
@@ -197,34 +198,30 @@ struct BCLM: ParsableCommand {
                 let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
                 let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
                 let chargeState = sources[0]["Power Source State"] as? String
-                let isACPower = (chargeState == "AC Power") ? true : false
+                let isACPower : Bool? = (chargeState == "AC Power") ? true : (chargeState == "Battery Power" ? false : nil)
                 let isCharging = sources[0]["Is Charging"] as? Bool
                 let currentBattLevelInt = Int((sources[0]["Current Capacity"] as? Int) ?? -1)
                 
                 // Avoid failure by repeating maxTryCount times, and avoid opening SMC each time to affect performance.
-                var needLimit : Bool? = nil
+                var needLimit = true
+
                 if (chargeState != nil && currentBattLevelInt >= 0) {
-                    if (!isACPower || currentBattLevelInt >= 80) {
-                        needLimit = true
-                    } else if (currentBattLevelInt < 78) {
+                    if (isACPower == true && currentBattLevelInt < 78) {
                         needLimit = false
                     }
                 }
                 if (lastLimit != needLimit) {
-                    var needLimitStr = "nil"
-                    if (needLimit != nil) {
-                        needLimitStr = String(needLimit!)
-                    }
-                    var lastLimitStr = "nil"
-                    if (lastLimit != nil) {
-                        lastLimitStr = String(lastLimit!)
-                    }
-                    print("Limit status will be changed. (Current: \(needLimitStr), Last: \(lastLimitStr))")
+                    print("Limit status will be changed. (Current: \(String(needLimit)), Last: \(String(lastLimit)))")
 
                     lastLimit = needLimit
                     lastLimitCheckCount = 1
-                } else if (needLimit != nil) {
+                } else {
                     lastLimitCheckCount += 1
+                }
+
+                if (isACPower != nil && lastACPower != isACPower) {
+                    lastACPower = isACPower
+                    lastCharging = nil
                 }
 
                 if (lastCharging != isCharging) {
@@ -240,7 +237,6 @@ struct BCLM: ParsableCommand {
                     
                     lastCharging = isCharging
                     lastChargingCheckCount = 1
-
                 } else if (isCharging != nil) {
                     lastChargingCheckCount += 1
                 }
