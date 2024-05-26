@@ -6,6 +6,7 @@ build:
 	strip .build/apple/Products/Release/bclm
 
 install: build
+	mkdir -p "$(bindir)"
 	install ".build/apple/Products/Release/bclm" "$(bindir)"
 
 uninstall:
