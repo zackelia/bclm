@@ -15,8 +15,7 @@ A release zip is also provided with a signed and notarized binary for those who 
 ### Brew
 
 ```
-$ brew tap zackelia/formulae
-$ brew install bclm
+$ brew install zackelia/formulae/bclm
 ```
 
 ### From Source
