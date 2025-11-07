@@ -1,5 +1,8 @@
 # BCLM
 
+> [!WARNING]
+> BCLM does not work on macOS >= 15.0 due to new entitlement enforcement from the kernel that cannot be circumvented without disabling SIP. See discussion: https://github.com/zackelia/bclm/issues/49
+
 BCLM is a wrapper to read and write battery charge level max (BCLM)/CHWA values to the System Management Controller (SMC) on Mac computers. It supports both Intel and Apple silicon. This project was inspired by several battery management solutions, including Apple's own battery health management.
 
 The purpose of limiting the battery's max charge is to prolong battery health and to prevent damage to the battery. Various sources show that the optimal charge range for operation of lithium-ion batteries is between 40% and 80%, commonly referred to as the 40-80 rule [[1]](https://www.apple.com/batteries/why-lithium-ion/)[[2]](https://www.eeworldonline.com/why-you-should-stop-fully-charging-your-smartphone-now/)[[3]](https://www.csmonitor.com/Technology/Tech/2014/0103/40-80-rule-New-tip-for-extending-battery-life). This project is especially helpful to people who leave their Macs on the charger all day, every day.
