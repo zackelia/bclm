@@ -10,68 +10,49 @@ struct Preferences: Codable {
     var ProgramArguments: [String]
 }
 
-func persist(_ enable: Bool) {
-    if isPersistent() && enable {
-        fputs("Already persisting!\n", stderr)
-        return
-    }
-    if !isPersistent() && !enable {
-        fputs("Already not persisting!\n", stderr)
-        return
-    }
-
+@discardableResult
+func runCommand(_ launchPath: String, _ arguments: [String]) -> (status: Int32, output: String) {
     let process = Process()
     let pipe = Pipe()
-
-    var load: String
-    if (enable) {
-        load = "load"
-    } else {
-        load = "unload"
-    }
-
-    process.launchPath = launchctl
-    process.arguments = [load, plist_path]
+    process.launchPath = launchPath
+    process.arguments = arguments
     process.standardOutput = pipe
     process.standardError = pipe
-
     process.launch()
-
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    process.waitUntilExit()
+    let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return (process.terminationStatus, output)
+}
 
-    if (output != nil && !output!.isEmpty) {
-        print(output!)
-    }
+func persist(_ enable: Bool) {
+    // Unload/bootout any existing instance cleanly first
+    _ = runCommand(launchctl, ["bootout", "system/\(plist)"])
+    _ = runCommand(launchctl, ["unload", plist_path])
 
-    if !enable {
-        do {
-            try FileManager.default.removeItem(at: URL(fileURLWithPath: plist_path))
-        } catch {
-            print(error)
+    if enable {
+        // Modern macOS launchctl bootstrap first
+        let bootRes = runCommand(launchctl, ["bootstrap", "system", plist_path])
+        if bootRes.status != 0 {
+            // Fallback to legacy load
+            let loadRes = runCommand(launchctl, ["load", "-w", plist_path])
+            if loadRes.status != 0 && !loadRes.output.isEmpty {
+                print(loadRes.output)
+            }
+        }
+    } else {
+        if FileManager.default.fileExists(atPath: plist_path) {
+            do {
+                try FileManager.default.removeItem(at: URL(fileURLWithPath: plist_path))
+            } catch {
+                print(error)
+            }
         }
     }
 }
 
 func isPersistent() -> Bool {
-    let process = Process()
-    let pipe = Pipe()
-
-    process.launchPath = launchctl
-    process.arguments = ["list"]
-    process.standardOutput = pipe
-    process.standardError = pipe
-
-    process.launch()
-
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-    if (output != nil && output!.contains(plist)) {
-        return true
-    } else {
-        return false
-    }
+    return FileManager.default.fileExists(atPath: plist_path)
 }
 
 func updatePlist(_ value: Int) {
@@ -93,6 +74,11 @@ func updatePlist(_ value: Int) {
     do {
         let data = try encoder.encode(preferences)
         try data.write(to: path)
+        try FileManager.default.setAttributes([
+            .posixPermissions: 0o644,
+            .ownerAccountName: "root",
+            .groupOwnerAccountName: "wheel"
+        ], ofItemAtPath: plist_path)
     } catch {
         print(error)
     }
