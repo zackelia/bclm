@@ -42,13 +42,8 @@ struct BCLM: ParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Writes a BCLM value.")
 
-#if arch(x86_64)
-        @Argument(help: "The value to set (50-100)")
+        @Argument(help: "The value to set (40-100)")
         var value: Int
-#else
-        @Argument(help: "The value to set (80 or 100)")
-        var value: Int
-#endif
 
         func validate() throws {
             guard getuid() == 0 else {
@@ -56,12 +51,12 @@ struct BCLM: ParsableCommand {
             }
 
 #if arch(x86_64)
-            guard value >= 50 && value <= 100 else {
-                throw ValidationError("Value must be between 50 and 100.")
+            guard value >= 40 && value <= 100 else {
+                throw ValidationError("Value must be between 40 and 100.")
             }
 #else
-            guard value == 80 || value == 100 else {
-                throw ValidationError("Value must be either 80 or 100.")
+            guard value >= 40 && value <= 100 else {
+                throw ValidationError("Value must be between 40 and 100.")
             }
 #endif
         }
